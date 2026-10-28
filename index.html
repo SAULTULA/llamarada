@@ -11,17 +11,32 @@
 <body>
   <main class="container">
     <h1>Videollamada P2P</h1>
-    
-    <!-- Sección de identificación -->
+
+    <!-- 1. Elegir nombre -->
     <div class="card">
-      <p><strong>Tu ID de conexión:</strong> <span id="my-id">Cargando...</span></p>
+      <input type="text" id="my-name-input" placeholder="Elegí tu nombre (ej: juan)"
+             maxlength="20" autocapitalize="none" autocomplete="off" autocorrect="off">
+      <button id="connect-btn">Conectar</button>
+    </div>
+    <p class="hint">Tu nombre: <strong id="my-id">sin conectar</strong></p>
+
+    <!-- 2. Llamar -->
+    <div class="card">
+      <input type="text" id="peer-id-input" placeholder="Nombre de la otra persona"
+             maxlength="20" autocapitalize="none" autocomplete="off" autocorrect="off">
+      <button id="call-btn" disabled>Llamar</button>
     </div>
 
-    <!-- Sección para llamar -->
-    <div class="card">
-      <input type="text" id="peer-id-input" placeholder="Ingresá el ID del otro celular">
-      <button id="call-btn">Llamar</button>
+    <!-- 3. Controles de la llamada -->
+    <div class="controls">
+      <button id="hangup-btn" class="btn-danger" disabled>Cortar</button>
+      <button id="rec-btn" class="btn-rec" disabled>Grabar</button>
     </div>
+
+    <p id="status" class="status">Elegí un nombre y tocá Conectar.</p>
+    <p id="download-area" class="status hidden">
+      Última grabación: <a id="download-link" href="#">Descargar</a>
+    </p>
 
     <!-- Reproductores de Video -->
     <div class="video-grid">

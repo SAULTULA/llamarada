@@ -36,6 +36,7 @@ h1 {
 
 input {
   flex: 1;
+  min-width: 0;
   padding: 10px;
   border-radius: 6px;
   border: 1px solid #333;
@@ -49,6 +50,61 @@ button {
   color: white;
   border: none;
   border-radius: 6px;
+  font-weight: bold;
+}
+
+button:disabled {
+  opacity: 0.4;
+}
+
+.hint,
+.status {
+  font-size: 0.9rem;
+  text-align: center;
+  color: #b5b5b5;
+}
+
+.hint strong {
+  color: #ffffff;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+}
+
+.controls button {
+  flex: 1;
+  padding: 14px 16px;
+}
+
+.btn-danger {
+  background: #dc2626;
+}
+
+.btn-rec {
+  background: #3a3a3a;
+}
+
+.btn-rec.recording {
+  background: #b91c1c;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% { opacity: 0.65; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-rec.recording { animation: none; }
+}
+
+.hidden {
+  display: none;
+}
+
+.status a {
+  color: #60a5fa;
   font-weight: bold;
 }
 
