@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prueba Videollamada P2P</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Carga de la librería de PeerJS desde CDN -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+  <main class="container">
+    <h1>Videollamada P2P</h1>
+    
+    <!-- Sección de identificación -->
+    <div class="card">
+      <p><strong>Tu ID de conexión:</strong> <span id="my-id">Cargando...</span></p>
+    </div>
+
+    <!-- Sección para llamar -->
+    <div class="card">
+      <input type="text" id="peer-id-input" placeholder="Ingresá el ID del otro celular">
+      <button id="call-btn">Llamar</button>
+    </div>
+
+    <!-- Reproductores de Video -->
+    <div class="video-grid">
+      <div class="video-box">
+        <p>Mi Cámara</p>
+        <video id="local-video" autoplay playsinline muted></video>
+      </div>
+      <div class="video-box">
+        <p>Remoto</p>
+        <video id="remote-video" autoplay playsinline></video>
+      </div>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
