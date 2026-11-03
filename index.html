@@ -34,9 +34,31 @@
     </div>
 
     <p id="status" class="status">Elegí un nombre y tocá Conectar.</p>
+    <p id="conn-info" class="status small"></p>
     <p id="download-area" class="status hidden">
       Última grabación: <a id="download-link" href="#">Descargar</a>
     </p>
+
+    <!-- 4. Avanzado: diagnóstico y TURN manual -->
+    <details class="card advanced">
+      <summary>Avanzado (conexión entre redes distintas)</summary>
+      <div class="advanced-body">
+        <p id="turn-state" class="hint">Cargando configuración de conexión…</p>
+        <button id="probe-btn" type="button">Probar TURN</button>
+
+        <p class="hint">Si el TURN automático no funciona, podés pegar otro acá. Se guarda solo en este navegador.</p>
+        <input type="text" id="custom-turn-url" placeholder="Servidor (ej: free.expressturn.com:3478)"
+               autocapitalize="none" autocomplete="off" autocorrect="off">
+        <input type="text" id="custom-turn-user" placeholder="Usuario TURN"
+               autocapitalize="none" autocomplete="off" autocorrect="off">
+        <input type="text" id="custom-turn-cred" placeholder="Contraseña TURN"
+               autocapitalize="none" autocomplete="off" autocorrect="off">
+        <div class="advanced-actions">
+          <button id="save-turn-btn" type="button">Guardar TURN</button>
+          <button id="clear-turn-btn" type="button" class="btn-rec">Quitar TURN manual</button>
+        </div>
+      </div>
+    </details>
 
     <!-- Reproductores de Video -->
     <div class="video-grid">

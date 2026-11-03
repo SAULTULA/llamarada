@@ -68,6 +68,73 @@ button:disabled {
   color: #ffffff;
 }
 
+.small {
+  font-size: 0.8rem;
+}
+
+.status.error,
+.hint.error {
+  color: #fca5a5;
+}
+
+.status.ok,
+.hint.ok {
+  color: #86efac;
+}
+
+.conn-direct {
+  color: #86efac;
+}
+
+.conn-relay {
+  color: #fcd34d;
+}
+
+details.card {
+  display: block;
+  text-align: left;
+}
+
+details.card summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #b5b5b5;
+  list-style: none;
+}
+
+details.card summary::-webkit-details-marker {
+  display: none;
+}
+
+details.card summary::before {
+  content: '▸ ';
+}
+
+details.card[open] summary::before {
+  content: '▾ ';
+}
+
+.advanced-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.advanced-body input {
+  width: 100%;
+  flex: none;
+}
+
+.advanced-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.advanced-actions button {
+  flex: 1;
+}
+
 .controls {
   display: flex;
   gap: 10px;
