@@ -135,6 +135,36 @@ details.card[open] summary::before {
   flex: 1;
 }
 
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: #b5b5b5;
+}
+
+.check-row input {
+  width: auto;
+  flex: none;
+  margin: 0;
+}
+
+.diag {
+  margin: 0;
+  padding: 8px;
+  max-height: 220px;
+  overflow: auto;
+  background: #0d0d0d;
+  border: 1px solid #333;
+  border-radius: 6px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: #c9c9c9;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .controls {
   display: flex;
   gap: 10px;

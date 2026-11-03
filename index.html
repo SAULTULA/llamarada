@@ -46,6 +46,11 @@
         <p id="turn-state" class="hint">Cargando configuración de conexión…</p>
         <button id="probe-btn" type="button">Probar TURN</button>
 
+        <label class="check-row">
+          <input type="checkbox" id="force-relay">
+          Forzar relay (todo pasa por TURN)
+        </label>
+
         <p class="hint">Si el TURN automático no funciona, podés pegar otro acá. Se guarda solo en este navegador.</p>
         <input type="text" id="custom-turn-url" placeholder="Servidor (ej: free.expressturn.com:3478)"
                autocapitalize="none" autocomplete="off" autocorrect="off">
@@ -57,6 +62,10 @@
           <button id="save-turn-btn" type="button">Guardar TURN</button>
           <button id="clear-turn-btn" type="button" class="btn-rec">Quitar TURN manual</button>
         </div>
+
+        <p class="hint">Diagnóstico (copiá esto si algo falla):</p>
+        <pre id="diag-log" class="diag"></pre>
+        <button id="copy-diag-btn" type="button" class="btn-rec">Copiar diagnóstico</button>
       </div>
     </details>
 

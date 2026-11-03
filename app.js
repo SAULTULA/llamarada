@@ -10,7 +10,7 @@ const STUN_SERVERS = [
 
 // Esperas entre reintentos cuando el servidor dice que el nombre está ocupado.
 const NAME_RETRY_DELAYS = [1000, 2000, 3000, 5000, 8000, 10000];
-const CALL_TIMEOUT_MS = 30000;
+const CALL_TIMEOUT_MS = 40000;
 const TURN_PROBE_TIMEOUT_MS = 10000;
 
 let localStream;
@@ -27,6 +27,14 @@ let peerRetryTimer = null;
 let reconnectTimer = null;
 let callTimeoutTimer = null;
 let intentionalDestroy = false;
+
+// Estado de la conexión de medios (ICE) de la llamada actual
+let callConnected = false;
+let disconnectTimer = null;
+let statsTimer = null;
+
+// Diagnóstico visible
+const diagLines = [];
 
 // Estado de grabación
 let recorder;
@@ -58,6 +66,23 @@ const customTurnUser = $('custom-turn-user');
 const customTurnCred = $('custom-turn-cred');
 const saveTurnBtn = $('save-turn-btn');
 const clearTurnBtn = $('clear-turn-btn');
+const forceRelayEl = $('force-relay');
+const diagLogEl = $('diag-log');
+const copyDiagBtn = $('copy-diag-btn');
+
+function diag(msg) {
+  const line = new Date().toLocaleTimeString() + '  ' + msg;
+  diagLines.push(line);
+  if (diagLines.length > 40) diagLines.shift();
+  if (diagLogEl) {
+    diagLogEl.textContent = diagLines.join('\n');
+    diagLogEl.scrollTop = diagLogEl.scrollHeight;
+  }
+}
+
+function kb(bytes) {
+  return (bytes / 1024).toFixed(0) + ' KB';
+}
 
 function setStatus(msg, kind) {
   statusEl.textContent = msg;
@@ -190,7 +215,7 @@ function peerOptions() {
   return {
     config: {
       iceServers,
-      iceCandidatePoolSize: 10,
+      iceTransportPolicy: forceRelayEl && forceRelayEl.checked ? 'relay' : 'all',
       sdpSemantics: 'unified-plan'
     }
   };
@@ -246,6 +271,7 @@ function createPeer(name) {
     peerRetryAttempt = 0;
     myIdSpan.textContent = name;
     try { localStorage.setItem('llamarada-name', name); } catch (e) {}
+    diag('peer abierto como «' + name + '»');
     setStatus('Listo. Pasale tu nombre a la otra persona o escribí el suyo y tocá Llamar.', 'ok');
     updateUI();
   });
@@ -303,6 +329,7 @@ function handlePeerError(err, name, source) {
     if (peerRetryAttempt < NAME_RETRY_DELAYS.length) {
       const delay = NAME_RETRY_DELAYS[peerRetryAttempt];
       peerRetryAttempt += 1;
+      diag('nombre ocupado, reintento ' + peerRetryAttempt);
       setStatus('Reconectando con «' + name + '»… (intento ' + peerRetryAttempt + ')');
       destroyPeer();
       peerRetryTimer = setTimeout(() => createPeer(name), delay);
@@ -321,11 +348,13 @@ function handlePeerError(err, name, source) {
 
   if (err.type === 'peer-unavailable') {
     endCall();
+    diag('peer-unavailable');
     setStatus('Esa persona no está conectada con ese nombre.', 'error');
     return;
   }
 
   if (['network', 'server-error', 'socket-error', 'socket-closed'].includes(err.type)) {
+    diag('error de señalización: ' + err.type);
     setStatus('Problema de red con el servidor. Reintentando…', 'error');
     clearTimeout(peerRetryTimer);
     peerRetryTimer = setTimeout(() => {
@@ -368,16 +397,16 @@ function destroyPeer() {
 // 4. Manejo común de una llamada (entrante o saliente)
 function setupCall(call) {
   currentCall = call;
+  callConnected = false;
   updateUI();
   clearTimeout(callTimeoutTimer);
+  diag('--- llamada iniciada ---');
 
   call.on('stream', (stream) => {
+    // Ojo: 'stream' llega al aplicar el SDP remoto, NO cuando la media fluye.
     remoteStream = stream;
     remoteVideo.srcObject = stream;
-    clearTimeout(callTimeoutTimer);
-    setStatus('En llamada.', 'ok');
     updateUI();
-    watchConnection(call);
   });
 
   call.on('close', endCall);
@@ -386,15 +415,19 @@ function setupCall(call) {
     setStatus('La llamada falló.', 'error');
   });
 
+  watchConnection(call);
+
   callTimeoutTimer = setTimeout(() => {
-    if (remoteStream) return;
+    if (callConnected) return;
     const pc = call.peerConnection;
     const state = pc ? pc.iceConnectionState : 'desconocido';
+    diag('timeout sin conectar (ICE: ' + state + ')');
+    if (pc) logLocalCandidates(pc);
     endCall();
     setStatus(
       'No se pudo establecer la conexión (ICE: ' + state + '). ' +
         (turnConfigured
-          ? 'Probá desde otra red o tocá "Probar TURN" en Avanzado.'
+          ? 'Mirá el diagnóstico en Avanzado y probá "Forzar relay".'
           : 'No hay TURN configurado, así que solo funciona en la misma red.'),
       'error'
     );
@@ -405,24 +438,127 @@ function watchConnection(call) {
   const pc = call.peerConnection;
   if (!pc) return;
 
+  const startedAt = Date.now();
+
   const onChange = () => {
+    if (currentCall !== call) return;
+
     const state = pc.iceConnectionState;
+    diag('ICE ' + state + ' (+' + ((Date.now() - startedAt) / 1000).toFixed(1) + 's)');
+
     if (state === 'connected' || state === 'completed') {
-      showConnectionType(pc);
-    } else if (state === 'disconnected') {
-      setStatus('Conexión inestable, reintentando…', 'error');
-      if (typeof pc.restartIce === 'function') {
-        try { pc.restartIce(); } catch (e) {}
+      clearTimeout(disconnectTimer);
+      disconnectTimer = null;
+      if (!callConnected) {
+        callConnected = true;
+        clearTimeout(callTimeoutTimer);
+        diag('conexión de medios establecida');
       }
-    } else if (state === 'failed') {
+      setStatus('En llamada.', 'ok');
+      showConnectionType(pc);
+      startStats(pc);
+      return;
+    }
+
+    if (state === 'disconnected') {
+      // disconnected suele ser transitorio: damos 5 s antes de avisar.
+      if (disconnectTimer) return;
+      disconnectTimer = setTimeout(() => {
+        disconnectTimer = null;
+        if (currentCall !== call) return;
+        if (pc.iceConnectionState !== 'disconnected') return;
+        diag('sigue disconnected después de 5 s');
+        setStatus('Conexión inestable…', 'error');
+      }, 5000);
+      return;
+    }
+
+    if (state === 'failed') {
+      clearTimeout(disconnectTimer);
+      disconnectTimer = null;
+      diag('ICE failed');
+      logLocalCandidates(pc);
       setStatus('La conexión se cortó.', 'error');
       endCall();
     }
   };
 
   pc.addEventListener('iceconnectionstatechange', onChange);
-  call.on('close', () => pc.removeEventListener('iceconnectionstatechange', onChange));
+
+  // Deja registrado qué tipos de candidato se consiguieron (host/srflx/relay).
+  const logCandidates = () => logLocalCandidates(pc);
+  const onGathering = () => {
+    if (pc.iceGatheringState === 'complete') logCandidates();
+  };
+  pc.addEventListener('icegatheringstatechange', onGathering);
+  setTimeout(() => {
+    if (currentCall === call) logCandidates();
+  }, 4000);
+
+  call.on('close', () => {
+    pc.removeEventListener('iceconnectionstatechange', onChange);
+    pc.removeEventListener('icegatheringstatechange', onGathering);
+    stopStats();
+  });
+
   onChange();
+}
+
+async function logLocalCandidates(pc) {
+  try {
+    const stats = await pc.getStats();
+    const counts = {};
+    stats.forEach((report) => {
+      if (report.type === 'local-candidate') {
+        const key = 'local ' + report.candidateType;
+        counts[key] = (counts[key] || 0) + 1;
+      }
+      if (report.type === 'remote-candidate') {
+        const key = 'remoto ' + report.candidateType;
+        counts[key] = (counts[key] || 0) + 1;
+      }
+    });
+    const parts = Object.keys(counts).map((k) => k + '=' + counts[k]);
+    diag('candidatos: ' + (parts.length ? parts.join(', ') : 'ninguno'));
+  } catch (e) {}
+}
+
+function startStats(pc) {
+  stopStats();
+  statsTimer = setInterval(async () => {
+    if (!pc || pc.connectionState === 'closed') {
+      stopStats();
+      return;
+    }
+    try {
+      const stats = await pc.getStats();
+      let inBytes = 0;
+      let inPkts = 0;
+      let outBytes = 0;
+      let outPkts = 0;
+
+      stats.forEach((report) => {
+        if (report.type === 'inbound-rtp' && report.kind === 'video') {
+          inBytes = report.bytesReceived || 0;
+          inPkts = report.packetsReceived || 0;
+        }
+        if (report.type === 'outbound-rtp' && report.kind === 'video') {
+          outBytes = report.bytesSent || 0;
+          outPkts = report.packetsSent || 0;
+        }
+      });
+
+      diag(
+        'video: recv ' + kb(inBytes) + ' (' + inPkts + ' pkts) · ' +
+        'sent ' + kb(outBytes) + ' (' + outPkts + ' pkts)'
+      );
+    } catch (e) {}
+  }, 2000);
+}
+
+function stopStats() {
+  clearInterval(statsTimer);
+  statsTimer = null;
 }
 
 async function showConnectionType(pc) {
@@ -453,12 +589,21 @@ async function showConnectionType(pc) {
       });
     }
 
-    if (!pair) return;
+    if (!pair) {
+      diag('todavía no hay par de candidatos seleccionado');
+      return;
+    }
 
     const local = candidates[pair.localCandidateId];
     const remote = candidates[pair.remoteCandidateId];
     const types = [local && local.candidateType, remote && remote.candidateType].filter(Boolean);
     const relayed = types.indexOf('relay') !== -1;
+
+    diag(
+      'par: local=' + ((local && local.candidateType) || '?') +
+      ' remoto=' + ((remote && remote.candidateType) || '?') +
+      ' proto=' + (pair.protocol || '?')
+    );
 
     connInfoEl.textContent = relayed ? 'Conexión por relay (TURN).' : 'Conexión directa P2P.';
     connInfoEl.className = 'status small ' + (relayed ? 'conn-relay' : 'conn-direct');
@@ -500,6 +645,10 @@ function hangUp() {
 // Limpia todo al terminar la llamada (la corte uno u otro)
 function endCall() {
   clearTimeout(callTimeoutTimer);
+  clearTimeout(disconnectTimer);
+  disconnectTimer = null;
+  stopStats();
+  callConnected = false;
   if (recorder && recorder.state !== 'inactive') stopRecording();
   currentCall = null;
   remoteStream = null;
@@ -567,6 +716,7 @@ async function probeTurn() {
   const ok = await result;
   pc.close();
   if (probeBtn) probeBtn.disabled = false;
+  diag('probar TURN: ' + (ok ? 'relay OK' : 'sin candidato relay'));
 
   setTurnState(
     ok
@@ -753,6 +903,38 @@ probeBtn.addEventListener('click', probeTurn);
 saveTurnBtn.addEventListener('click', saveCustomTurn);
 clearTurnBtn.addEventListener('click', clearCustomTurn);
 
+if (forceRelayEl) {
+  forceRelayEl.addEventListener('change', () => {
+    try {
+      localStorage.setItem('llamarada-force-relay', forceRelayEl.checked ? '1' : '0');
+    } catch (e) {}
+    diag('forzar relay: ' + (forceRelayEl.checked ? 'sí' : 'no'));
+
+    if (peer && !peer.destroyed) {
+      const name = myName;
+      if (currentCall) hangUp();
+      destroyPeer();
+      if (name) createPeer(name);
+    }
+  });
+}
+
+if (copyDiagBtn) {
+  copyDiagBtn.addEventListener('click', async () => {
+    const text = diagLines.join('\n');
+    if (!text) {
+      setStatus('Todavía no hay diagnóstico para copiar.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus('Diagnóstico copiado.', 'ok');
+    } catch (e) {
+      setStatus('No se pudo copiar. Mantené presionado el texto para seleccionarlo.', 'error');
+    }
+  });
+}
+
 window.addEventListener('online', reconnectIfNeeded);
 window.addEventListener('pageshow', (event) => {
   if (event.persisted) reconnectIfNeeded();
@@ -775,6 +957,10 @@ window.addEventListener('pagehide', () => {
 async function boot() {
   try { myNameInput.value = localStorage.getItem('llamarada-name') || ''; } catch (e) {}
 
+  if (forceRelayEl) {
+    try { forceRelayEl.checked = localStorage.getItem('llamarada-force-relay') === '1'; } catch (e) {}
+  }
+
   const custom = readCustomTurn();
   if (custom) {
     customTurnUrl.value = custom.url;
@@ -794,3 +980,24 @@ async function boot() {
 }
 
 boot();
+
+// Acceso de solo lectura para diagnóstico (consola del navegador).
+window.llamaradaDiag = () => {
+  const pc = currentCall && currentCall.peerConnection;
+  return {
+    myName,
+    peerOpen: !!peer && !peer.destroyed && !peer.disconnected,
+    inCall: !!currentCall,
+    callConnected,
+    ice: pc ? pc.iceConnectionState : null,
+    signaling: pc ? pc.signalingState : null,
+    gathering: pc ? pc.iceGatheringState : null,
+    localSdp: pc && pc.localDescription ? pc.localDescription.type : null,
+    remoteSdp: pc && pc.remoteDescription ? pc.remoteDescription.type : null,
+    localCandidates: pc && pc.localDescription ? (pc.localDescription.sdp.match(/a=candidate/g) || []).length : null,
+    remoteCandidates: pc && pc.remoteDescription ? (pc.remoteDescription.sdp.match(/a=candidate/g) || []).length : null,
+    senders: pc ? pc.getSenders().length : null,
+    transceivers: pc ? pc.getTransceivers().length : null,
+    diag: diagLines.slice()
+  };
+};
